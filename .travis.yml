@@ -1,0 +1,54 @@
+sudo: required
+
+services:
+  - docker
+
+language: bash
+
+branches:
+  only:
+  - master
+
+env:
+  - BUILD_ARCH=arm32v7
+  - BUILD_ARCH=arm64v8
+  - BUILD_ARCH=amd64
+
+before_script:
+
+  # 生成需要的变量
+  - IMAGE_NAME="${DOCKER_USERNAME}/zerotier-one"
+  - ZT_VERSION=$(grep "ENV ZT_VERSION" Dockerfile | awk 'NF>1{print $NF}')
+  
+  - >
+    case ${BUILD_ARCH} in
+      "arm32v7")
+      ZT_ARCH=armhf
+      ;;
+      "arm64v8")
+      ZT_ARCH=arm64
+      ;;
+      "amd64")
+      ZT_ARCH=amd64
+    esac
+
+  - IMAGE_TAG="linux-${BUILD_ARCH}-${ZT_VERSION}"
+  - BUILD_FROM="${BUILD_ARCH}/debian:stretch"
+
+  # Prepare QEMU
+  - docker run --rm --privileged multiarch/qemu-user-static:register --reset
+
+script:
+
+  # Build Image
+  - docker build --build-arg BUILD_FROM="${BUILD_FROM}" -t ${IMAGE_NAME}:${IMAGE_TAG} .
+
+  # Test Image
+  - docker run ${IMAGE_NAME}:${IMAGE_TAG} zerotier-one -v
+
+  # Push Image
+  - >
+    echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
+    docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:linux-${BUILD_ARCH}
+    docker push ${IMAGE_NAME}:${IMAGE_TAG}
+    docker push ${IMAGE_NAME}:${IMAGE_TAG}:linux-${BUILD_ARCH}
